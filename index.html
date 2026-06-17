@@ -21,6 +21,7 @@ body{
     background:#1a1a1a;
     position:sticky;
     top:0;
+    z-index: 10;
 }
 
 input{
@@ -29,6 +30,7 @@ input{
     margin-bottom:10px;
     border:none;
     border-radius:8px;
+    box-sizing: border-box;
 }
 
 button{
@@ -39,6 +41,8 @@ button{
     border:none;
     border-radius:8px;
     cursor:pointer;
+    box-sizing: border-box;
+    font-weight: bold;
 }
 
 button:hover{
@@ -52,7 +56,7 @@ button:hover{
 
 .left{
     width:350px;
-    max-height:calc(100vh - 80px);
+    max-height:calc(100vh - 180px);
     overflow:auto;
     border-right:1px solid #333;
 }
@@ -146,30 +150,32 @@ let allChannels = [];
 
 async function loadPlaylist(){
 
-    const url =
-        document.getElementById("playlistUrl").value;
+    const origUrl = document.getElementById("playlistUrl").value.trim();
 
-    document.getElementById("status").innerHTML =
-        "Loading playlist...";
+    document.getElementById("status").innerHTML = "Loading playlist...";
+
+    // Membungkus URL menggunakan CORS Proxy AllOrigins
+    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(origUrl);
 
     try{
 
-        const response =
-            await fetch(url);
+        const response = await fetch(proxyUrl);
+        
+        if (!response.ok) {
+            throw new Error('Gagal merespon dari server proxy.');
+        }
 
-        const text =
-            await response.text();
+        const text = await response.text();
 
         parsePlaylist(text);
 
         document.getElementById("status").innerHTML =
-            allChannels.length +
-            " channel ditemukan";
+            allChannels.length + " channel ditemukan";
 
     }catch(err){
 
         document.getElementById("status").innerHTML =
-            "Gagal membaca playlist (kemungkinan CORS diblokir)";
+            "Gagal membaca playlist (CORS diblokir atau URL tidak valid)";
 
         console.error(err);
     }
@@ -185,14 +191,11 @@ function parsePlaylist(text){
 
         if(lines[i].startsWith("#EXTINF")){
 
-            let name =
-                lines[i].split(",").pop().trim();
+            let name = lines[i].split(",").pop().trim();
 
-            let stream =
-                lines[i+1]?.trim();
+            let stream = lines[i+1]?.trim();
 
-            if(stream &&
-               stream.startsWith("http")){
+            if(stream && stream.startsWith("http")){
 
                 allChannels.push({
                     name:name,
@@ -207,15 +210,13 @@ function parsePlaylist(text){
 
 function renderChannels(channels){
 
-    const container =
-        document.getElementById("channelList");
+    const container = document.getElementById("channelList");
 
     container.innerHTML = "";
 
     channels.forEach(ch=>{
 
-        const div =
-            document.createElement("div");
+        const div = document.createElement("div");
 
         div.className = "channel";
 
@@ -225,9 +226,7 @@ function renderChannels(channels){
 
             playChannel(ch.url);
 
-            document.getElementById(
-                "currentChannel"
-            ).innerHTML = ch.name;
+            document.getElementById("currentChannel").innerHTML = ch.name;
         };
 
         container.appendChild(div);
@@ -236,28 +235,20 @@ function renderChannels(channels){
 
 function filterChannels(){
 
-    const keyword =
-        document.getElementById("search")
-        .value
-        .toLowerCase();
+    const keyword = document.getElementById("search").value.toLowerCase();
 
-    const result =
-        allChannels.filter(ch =>
-            ch.name
-            .toLowerCase()
-            .includes(keyword)
-        );
+    const result = allChannels.filter(ch =>
+        ch.name.toLowerCase().includes(keyword)
+    );
 
     renderChannels(result);
 }
 
 function playChannel(url){
 
-    const video =
-        document.getElementById("video");
+    const video = document.getElementById("video");
 
     if(window.hls){
-
         window.hls.destroy();
     }
 
