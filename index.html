@@ -154,7 +154,7 @@ function loadPlaylist(){
     const oldScript = document.getElementById('bloggerJsonp');
     if(oldScript) oldScript.remove();
 
-    // Bypass CORS feed menggunakan JSONP script injection
+    // Mengambil data artikel lewat JSONP agar bebas dari blokir CORS
     const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1&callback=handleBloggerData";
 
     const script = document.createElement('script');
@@ -175,25 +175,18 @@ function handleBloggerData(data) {
 
         const htmlContent = data.feed.entry[0].content.$t; 
 
+        // Ekstraksi teks murni dan bersihkan spasi HTML aneh seperti &nbsp;
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = htmlContent;
-        
-        let formattedText = tempDiv.innerHTML
-            .replace(/<br\s*\/?>/gi, '\n')
-            .replace(/<\/p>/gi, '\n')
-            .replace(/<div[^>]*>/gi, '\n')
-            .replace(/<\/div>/gi, '\n');
+        const plainTextPlaylist = (tempDiv.textContent || tempDiv.innerText || "")
+                                  .replace(/\u00a0/g, " "); // Hapus space spasi tak terlihat
 
-        const cleanDiv = document.createElement("div");
-        cleanDiv.innerHTML = formattedText;
-        const plainTextPlaylist = cleanDiv.textContent || cleanDiv.innerText || "";
-
-        parsePlaylist(plainTextPlaylist);
+        parsePlaylistRegex(plainTextPlaylist);
 
         if(allChannels.length > 0) {
-            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan";
+            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan (termasuk RTB jika tertera)";
         } else {
-            document.getElementById("status").innerHTML = "0 channel ditemukan.";
+            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa tulisan format M3U Anda.";
         }
     } catch(err) {
         document.getElementById("status").innerHTML = "Gagal memproses data.";
@@ -201,32 +194,46 @@ function handleBloggerData(data) {
     }
 }
 
-function parsePlaylist(text){
+// Sistem parser baru menggunakan Regex global agar tangkapan teks jauh lebih akurat
+function parsePlaylistRegex(text) {
     allChannels = [];
-    const lines = text.split(/\n+/);
+    
+    // Pola regex untuk mencari potongan #EXTINF beserta nama dan link streaming di bawahnya
+    const regex = /#EXTINF:[^\n,]*,(.*?)\s+(https?:\/\/[^\s<>"]+)/gi;
+    let match;
 
-    for(let i=0; i<lines.length; i++){
-        let currentLine = lines[i].trim();
+    while ((match = regex.exec(text)) !== null) {
+        let name = match[1].trim();
+        let streamUrl = match[2].trim();
 
-        if(currentLine.includes("#EXTINF")){
-            let name = currentLine.split(",").pop().trim();
-            let stream = "";
-            
-            for (let j = i + 1; j < lines.length; j++) {
-                let nextLine = lines[j].trim();
-                if (nextLine.startsWith("http")) {
-                    stream = nextLine;
-                    break;
-                } else if (nextLine.includes("#EXTINF")) {
-                    break;
+        if (name && streamUrl) {
+            allChannels.push({
+                name: name,
+                url: streamUrl
+            });
+        }
+    }
+
+    // Jika pola standar gagal karena format artikel barisnya rusak, gunakan fallback pencarian baris per baris
+    if (allChannels.length === 0) {
+        const lines = text.split(/\n+/);
+        for(let i=0; i<lines.length; i++){
+            let currentLine = lines[i].trim();
+            if(currentLine.includes("#EXTINF")){
+                let name = currentLine.split(",").pop().trim();
+                let stream = "";
+                for (let j = i + 1; j < lines.length; j++) {
+                    let nextLine = lines[j].trim();
+                    if (nextLine.startsWith("http")) {
+                        stream = nextLine;
+                        break;
+                    } else if (nextLine.includes("#EXTINF")) {
+                        break;
+                    }
                 }
-            }
-
-            if(stream){
-                allChannels.push({
-                    name: name,
-                    url: stream
-                });
+                if(stream){
+                    allChannels.push({ name: name, url: stream });
+                }
             }
         }
     }
@@ -267,8 +274,7 @@ function playChannel(url){
         window.hls.destroy();
     }
 
-    // Menggunakan pemutar native bawaan browser agar referer domain tetap valid (tanpa proxy)
-    // Ini krusial agar server Cloudfront tidak melempar error 403 Forbidden
+    // Pemutaran direct tanpa proxy untuk menghindari respon 403 Forbidden dari Cloudfront video
     if(Hls.isSupported()){
         const hls = new Hls();
         window.hls = hls;
