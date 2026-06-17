@@ -3,65 +3,276 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Debug / Cek Isi Artikel Blogspot</title>
+
+<title>IPTV Playlist Viewer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
 <style>
-    body { font-family: monospace; background: #111; color: #00ff00; padding: 20px; }
-    button { padding: 12px 20px; background: #00aaff; color: white; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; font-family: sans-serif; }
-    pre { background: #222; padding: 15px; border: 1px solid #333; overflow: auto; white-space: pre-wrap; word-wrap: break-word; color: #fff; margin-top: 15px; }
-    .info { color: #ffcc00; font-family: sans-serif; margin-bottom: 15px; }
+body{
+    font-family:Arial,sans-serif;
+    background:#111;
+    color:white;
+    margin:0;
+}
+
+.header{
+    padding:15px;
+    background:#1a1a1a;
+    position:sticky;
+    top:0;
+    z-index: 10;
+}
+
+input{
+    width:100%;
+    padding:12px;
+    margin-bottom:10px;
+    border:none;
+    border-radius:8px;
+    box-sizing: border-box;
+}
+
+button{
+    width:100%;
+    padding:12px;
+    background:#00aaff;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+    box-sizing: border-box;
+    font-weight: bold;
+}
+
+button:hover{
+    opacity:.9;
+}
+
+.container{
+    display:flex;
+    flex-wrap:wrap;
+}
+
+.left{
+    width:350px;
+    max-height:calc(100vh - 180px);
+    overflow:auto;
+    border-right:1px solid #333;
+}
+
+.right{
+    flex:1;
+    padding:10px;
+}
+
+.channel{
+    padding:12px;
+    border-bottom:1px solid #222;
+    cursor:pointer;
+}
+
+.channel:hover{
+    background:#222;
+}
+
+video{
+    width:100%;
+    max-height:80vh;
+    background:black;
+}
+
+.status{
+    margin-top:10px;
+    color:#aaa;
+}
+
+@media(max-width:768px){
+    .left{
+        width:100%;
+        max-height:300px;
+    }
+
+    .right{
+        width:100%;
+    }
+}
 </style>
+
 </head>
 <body>
 
-    <h2>Blogger Content Inspector</h2>
-    <div class="info">Klik tombol di bawah untuk melihat teks asli yang dibaca oleh sistem dari blog Anda.</div>
-    
-    <button onclick="cekIsiBlog()">Ambil & Intip Isi Artikel</button>
-    
-    <pre id="output">Hasil teks artikel akan muncul di sini...</pre>
+<div class="header">
+
+<input
+id="playlistUrl"
+value="https://bit.ly/pengembarahitam"
+placeholder="Paste URL Playlist">
+
+<button onclick="loadPlaylist()">
+Load Playlist
+</button>
+
+<input
+id="search"
+placeholder="Cari Channel..."
+onkeyup="filterChannels()">
+
+<div class="status" id="status"></div>
+
+</div>
+
+<div class="container">
+
+<div class="left">
+    <div id="channelList"></div>
+</div>
+
+<div class="right">
+
+<h3 id="currentChannel">
+Belum ada channel dipilih
+</h3>
+
+<video
+id="video"
+controls
+autoplay>
+</video>
+
+</div>
+
+</div>
 
 <script>
-function cekIsiBlog(){
-    document.getElementById("output").innerHTML = "Sedang mengambil data...";
-    
-    const oldScript = document.getElementById('bloggerJsonp');
-    if(oldScript) oldScript.remove();
 
-    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1&callback=tampilkanTeks";
+let allChannels = [];
 
-    const script = document.createElement('script');
-    script.id = 'bloggerJsonp';
-    script.src = blogFeedUrl;
-    script.onerror = function() {
-        document.getElementById("output").innerHTML = "Gagal memuat feed blog. Pastikan URL blog benar dan publik.";
-    };
-    document.body.appendChild(script);
-}
+async function loadPlaylist(){
+    document.getElementById("status").innerHTML = "Loading full playlist via Scraper...";
+    allChannels = [];
 
-function tampilkanTeks(data) {
+    // Mengambil halaman web UTUH menggunakan AllOrigins untuk menghindari potongan teks dari feed Blogger
+    const targetUrl = "https://mahadewa666.blogspot.com/2025/04/playlist-iptv-by-zack.html";
+    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+
     try {
-        if (!data.feed.entry || data.feed.entry.length === 0) {
-            document.getElementById("output").innerHTML = "Error: Tidak ada artikel yang ditemukan di blog ini.";
-            return;
+        const response = await fetch(proxyUrl);
+        if (!response.ok) throw new Error("Gagal menembus proxy.");
+        
+        const data = await response.json();
+        const htmlContent = data.contents; // Ini berisi seluruh kode HTML halaman web Anda tanpa sensor
+
+        // Menggunakan DOMParser untuk mengambil teks bersih dari area artikel (.post-body)
+        const parser = new DOMParser();
+        const doc = parser.parseFromString(htmlContent, 'text/html');
+        const postBody = doc.querySelector('.post-body') || doc.body;
+
+        // Mengubah breakline HTML menjadi line break nyata (\n)
+        let formattedText = postBody.innerHTML
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<div[^>]*>/gi, '\n')
+            .replace(/<\/div>/gi, '\n')
+            .replace(/&nbsp;/g, ' ')
+            .replace(/\u00a0/g, ' ');
+
+        const cleanDiv = document.createElement("div");
+        cleanDiv.innerHTML = formattedText;
+        const fullPlainText = cleanDiv.textContent || cleanDiv.innerText || "";
+
+        // Pindai teks murni menggunakan Regex Global agar menangkap semua channel dari atas sampai bawah
+        parsePlaylistStrict(fullPlainText);
+
+        if(allChannels.length > 0) {
+            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan (FIFA & RTB siap diputar).";
+        } else {
+            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa tulisan M3U di postingan blog.";
         }
 
-        const htmlContent = data.feed.entry[0].content.$t; 
-        
-        // Tampilkan HTML mentah dan teks bersihnya untuk dianalisis
-        const tempDiv = document.createElement("div");
-        tempDiv.innerHTML = htmlContent;
-        const plainText = tempDiv.textContent || tempDiv.innerText || "";
-
-        let logResult = "=== JUDUL ARTIKEL ===\n" + data.feed.entry[0].title.$t + "\n\n";
-        logResult += "=== TEKS YANG BERHASIL DIEKSTRAK (Cek apakah ada #EXTINF dan link http di bawah ini) ===\n";
-        logResult += plainText;
-        logResult += "\n\n=== KODE HTML ASLI DARI BLOGGER ===\n";
-        logResult += htmlContent;
-
-        document.getElementById("output").textContent = logResult;
-
     } catch(err) {
-        document.getElementById("output").innerHTML = "Gagal memproses data: " + err.message;
+        document.getElementById("status").innerHTML = "Gagal memuat halaman blog.";
+        console.error(err);
+    }
+}
+
+function parsePlaylistStrict(text) {
+    const lines = text.split(/\n+/);
+    let currentName = "";
+
+    for(let i=0; i<lines.length; i++){
+        let currentLine = lines[i].trim();
+
+        // Cari tag info channel
+        if(currentLine.toUpperCase().includes("#EXTINF")){
+            currentName = currentLine.split(",").pop().trim();
+            continue;
+        }
+
+        // Cari link streaming di bawahnya (mendukung http/https dan case-insensitive)
+        if(/^https?:\/\//i.test(currentLine) && currentName !== ""){
+            allChannels.push({
+                name: currentName,
+                url: currentLine
+            });
+            currentName = ""; // Reset pasangan
+        }
+    }
+
+    renderChannels(allChannels);
+}
+
+function renderChannels(channels){
+    const container = document.getElementById("channelList");
+    container.innerHTML = "";
+
+    channels.forEach(ch=>{
+        const div = document.createElement("div");
+        div.className = "channel";
+        div.innerHTML = ch.name;
+
+        div.onclick = function(){
+            playChannel(ch.url);
+            document.getElementById("currentChannel").innerHTML = ch.name;
+        };
+
+        container.appendChild(div);
+    });
+}
+
+function filterChannels(){
+    const keyword = document.getElementById("search").value.toLowerCase();
+    const result = allChannels.filter(ch =>
+        ch.name.toLowerCase().includes(keyword)
+    );
+    renderChannels(result);
+}
+
+function playChannel(url){
+    const video = document.getElementById("video");
+
+    if(window.hls){
+        window.hls.destroy();
+    }
+
+    if(Hls.isSupported()){
+        const hls = new Hls();
+        window.hls = hls;
+        hls.loadSource(url);
+        hls.attachMedia(video);
+
+        hls.on(Hls.Events.MANIFEST_PARSED, function(){
+            video.play().catch(e => console.log("Autoplay blocked."));
+        });
+
+        hls.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal) {
+                video.src = url; 
+            }
+        });
+    } else {
+        video.src = url;
+        video.play();
     }
 }
 </script>
