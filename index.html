@@ -106,8 +106,8 @@ video{
 
 <input
 id="playlistUrl"
-value="https://mahadewa666.blogspot.com/2025/04/playlist-iptv-by-zack.html"
-placeholder="Paste URL Artikel Blogspot Anda di sini">
+value="https://premium.ksa.my.id/playlist/fzpw/playlist.m3u8"
+placeholder="Paste URL Artikel Blogspot ATAU Link Playlist M3U/M3U8 di sini">
 
 <button onclick="loadPlaylist()">
 Load Playlist
@@ -118,7 +118,7 @@ id="search"
 placeholder="Cari Channel..."
 onkeyup="filterChannels()">
 
-<div class="status" id="status">Ready. Pasang URL Blogspot lalu klik Load.</div>
+<div class="status" id="status">Ready. Klik Load untuk memuat playlist.</div>
 
 </div>
 
@@ -148,57 +148,77 @@ autoplay>
 
 let allChannels = [];
 
-function loadPlaylist(){
-    document.getElementById("status").innerHTML = "Menghubungkan ke Google Server...";
+async function loadPlaylist(){
+    document.getElementById("status").innerHTML = "Memproses URL...";
     allChannels = [];
 
     const targetUrl = document.getElementById("playlistUrl").value.trim();
     
-    if (!targetUrl.includes("blogspot.com")) {
-        document.getElementById("status").innerHTML = "Error: Harap masukkan URL artikel Blogspot yang valid.";
+    if (!targetUrl) {
+        document.getElementById("status").innerHTML = "Error: URL tidak boleh kosong.";
         return;
     }
 
-    try {
-        // Memecah URL Blogspot secara dinamis untuk mengambil domain dan path artikelnya
-        const urlObj = new URL(targetUrl);
-        const domain = urlObj.origin; 
-        const path = urlObj.pathname; 
+    // OPSI 1: Jika Input berupa Link Artikel Blogspot
+    if (targetUrl.includes("blogspot.com")) {
+        document.getElementById("status").innerHTML = "Menghubungkan ke Google Server (Blogspot)...";
+        try {
+            const urlObj = new URL(targetUrl);
+            const domain = urlObj.origin; 
+            const path = urlObj.pathname; 
 
-        // Bersihkan script lama jika ada
-        const oldScript = document.getElementById('bloggerJsonp');
-        if(oldScript) oldScript.remove();
+            const oldScript = document.getElementById('bloggerJsonp');
+            if(oldScript) oldScript.remove();
 
-        // Memanggil single post feed secara spesifik via JSONP agar data murni ditarik 100% tanpa sensor/potongan
-        const nativeFeedUrl = `${domain}/feeds/posts/default?alt=json&path=${encodeURIComponent(path)}&callback=handleBloggerData`;
+            const nativeFeedUrl = `${domain}/feeds/posts/default?alt=json&path=${encodeURIComponent(path)}&callback=handleBloggerData`;
 
-        const script = document.createElement('script');
-        script.id = 'bloggerJsonp';
-        script.src = nativeFeedUrl;
-        script.onerror = function() {
-            document.getElementById("status").innerHTML = "Gagal memuat data. Pastikan URL artikel benar.";
-        };
+            const script = document.createElement('script');
+            script.id = 'bloggerJsonp';
+            script.src = nativeFeedUrl;
+            script.onerror = function() {
+                document.getElementById("status").innerHTML = "Gagal memuat data Blogspot.";
+            };
+            document.body.appendChild(script);
+        } catch (e) {
+            document.getElementById("status").innerHTML = "URL Blogspot tidak valid.";
+        }
+    } 
+    // OPSI 2: Jika Input berupa URL File Playlist M3U/M3U8 Langsung (seperti premium.ksa.my.id)
+    else {
+        document.getElementById("status").innerHTML = "Mengambil data file M3U via CORS Proxy...";
+        const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
         
-        document.body.appendChild(script);
+        try {
+            const response = await fetch(proxyUrl);
+            if (!response.ok) throw new Error("Gagal menembus proteksi file luar.");
+            
+            const data = await response.json();
+            const rawM3uText = data.contents; // Mendapatkan text mentah isi m3u8
 
-    } catch (e) {
-        document.getElementById("status").innerHTML = "URL tidak valid.";
+            parsePlaylistStrict(rawM3uText);
+
+            if(allChannels.length > 0) {
+                document.getElementById("status").innerHTML = allChannels.length + " channel berhasil dimuat dari link langsung!";
+            } else {
+                document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa struktur konten file m3u8.";
+            }
+        } catch(err) {
+            document.getElementById("status").innerHTML = "Gagal memuat file playlist dari link tersebut.";
+            console.error(err);
+        }
     }
 }
 
 function handleBloggerData(data) {
     try {
         if (!data.feed.entry || data.feed.entry.length === 0) {
-            throw new Error('Artikel tidak ditemukan atau tidak publik.');
+            throw new Error('Artikel tidak ditemukan.');
         }
 
-        // Mengambil konten penuh artikel
         const htmlContent = data.feed.entry[0].content.$t; 
-
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = htmlContent;
         
-        // Konversi paksa struktur HTML breakline Blogger menjadi baris teks baru (\n)
         let textWithNewlines = tempDiv.innerHTML
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/p>/gi, '\n')
@@ -214,9 +234,9 @@ function handleBloggerData(data) {
         parsePlaylistStrict(plainTextPlaylist);
 
         if(allChannels.length > 0) {
-            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan! (FIFA, RTB, dll ready di list).";
+            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan dari Blogspot!";
         } else {
-            document.getElementById("status").innerHTML = "Daftar teks terbaca, tetapi format #EXTINF tidak ditemukan.";
+            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa format teks artikel.";
         }
     } catch(err) {
         document.getElementById("status").innerHTML = "Gagal memproses struktur artikel.";
@@ -289,7 +309,7 @@ function playChannel(url){
 
         hls.on(Hls.Events.MANIFEST_PARSED, function(){
             video.play().catch(e => {
-                document.getElementById("status").innerHTML = "Sistem siap. Jika video stuck/CORS, gunakan ekstensi CORS Unblock browser.";
+                console.log("Autoplay ditangguhkan browser.");
             });
         });
 
