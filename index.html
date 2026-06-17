@@ -150,12 +150,11 @@ let allChannels = [];
 
 async function loadPlaylist(){
 
-    const origUrl = document.getElementById("playlistUrl").value.trim();
-
     document.getElementById("status").innerHTML = "Loading playlist...";
 
-    // Membungkus URL menggunakan CORS Proxy AllOrigins
-    const proxyUrl = 'https://api.allorigins.win/raw?url=' + encodeURIComponent(origUrl);
+    // Menggunakan proxy alternatif corsproxy.io yang jauh lebih stabil
+    const origUrl = document.getElementById("playlistUrl").value.trim();
+    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(origUrl);
 
     try{
 
@@ -175,7 +174,7 @@ async function loadPlaylist(){
     }catch(err){
 
         document.getElementById("status").innerHTML =
-            "Gagal membaca playlist (CORS diblokir atau URL tidak valid)";
+            "Gagal membaca playlist (Proxy error atau URL tidak valid)";
 
         console.error(err);
     }
