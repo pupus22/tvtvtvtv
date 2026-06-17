@@ -152,21 +152,25 @@ async function loadPlaylist(){
 
     document.getElementById("status").innerHTML = "Loading playlist...";
 
-    // Menggunakan proxy alternatif corsproxy.io yang jauh lebih stabil
-    const origUrl = document.getElementById("playlistUrl").value.trim();
-    const proxyUrl = 'https://corsproxy.io/?' + encodeURIComponent(origUrl);
+    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1";
 
     try{
 
-        const response = await fetch(proxyUrl);
-        
-        if (!response.ok) {
-            throw new Error('Gagal merespon dari server proxy.');
+        const response = await fetch(blogFeedUrl);
+        if (!response.ok) throw new Error('Gagal memuat feed dari Blogger.');
+
+        const data = await response.json();
+        if (!data.feed.entry || data.feed.entry.length === 0) {
+            throw new Error('Tidak ada artikel ditemukan.');
         }
 
-        const text = await response.text();
+        const htmlContent = data.feed.entry[0].content.$t; 
 
-        parsePlaylist(text);
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        const plainTextPlaylist = tempDiv.textContent || tempDiv.innerText || "";
+
+        parsePlaylist(plainTextPlaylist);
 
         document.getElementById("status").innerHTML =
             allChannels.length + " channel ditemukan";
@@ -174,8 +178,7 @@ async function loadPlaylist(){
     }catch(err){
 
         document.getElementById("status").innerHTML =
-            "Gagal membaca playlist (Proxy error atau URL tidak valid)";
-
+            "Gagal membaca playlist dari Blogger.";
         console.error(err);
     }
 }
@@ -183,19 +186,25 @@ async function loadPlaylist(){
 function parsePlaylist(text){
 
     allChannels = [];
-
     const lines = text.split(/\r?\n/);
 
     for(let i=0;i<lines.length;i++){
 
-        if(lines[i].startsWith("#EXTINF")){
+        if(lines[i].trim().startsWith("#EXTINF")){
 
             let name = lines[i].split(",").pop().trim();
-
-            let stream = lines[i+1]?.trim();
+            let stream = "";
+            
+            for (let j = i + 1; j < lines.length; j++) {
+                if (lines[j].trim().startsWith("http")) {
+                    stream = lines[j].trim();
+                    break;
+                } else if (lines[j].trim().startsWith("#EXTINF")) {
+                    break;
+                }
+            }
 
             if(stream && stream.startsWith("http")){
-
                 allChannels.push({
                     name:name,
                     url:stream
@@ -210,21 +219,16 @@ function parsePlaylist(text){
 function renderChannels(channels){
 
     const container = document.getElementById("channelList");
-
     container.innerHTML = "";
 
     channels.forEach(ch=>{
 
         const div = document.createElement("div");
-
         div.className = "channel";
-
         div.innerHTML = ch.name;
 
         div.onclick = function(){
-
             playChannel(ch.url);
-
             document.getElementById("currentChannel").innerHTML = ch.name;
         };
 
@@ -235,11 +239,9 @@ function renderChannels(channels){
 function filterChannels(){
 
     const keyword = document.getElementById("search").value.toLowerCase();
-
     const result = allChannels.filter(ch =>
         ch.name.toLowerCase().includes(keyword)
     );
-
     renderChannels(result);
 }
 
@@ -251,25 +253,38 @@ function playChannel(url){
         window.hls.destroy();
     }
 
+    // Mengalirkan URL video melalui proxy corsproxy.io khusus untuk menangani segmen .m3u8 
+    const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
+
     if(Hls.isSupported()){
 
-        const hls = new Hls();
+        // Mengonfigurasi hls.js agar meminta segmen video dengan benar lewat proxy
+        const hls = new Hls({
+            xhrSetup: function (xhr, url) {
+                // Jika hlsjs memanggil segmen internal berekstensi .ts, arahkan juga lewat proxy
+                if (!url.includes('corsproxy.io')) {
+                    xhr.open('GET', 'https://corsproxy.io/?' + encodeURIComponent(url), true);
+                }
+            }
+        });
 
         window.hls = hls;
-
-        hls.loadSource(url);
-
+        hls.loadSource(finalUrl);
         hls.attachMedia(video);
 
-        hls.on(
-            Hls.Events.MANIFEST_PARSED,
-            function(){
-                video.play();
+        hls.on(Hls.Events.MANIFEST_PARSED, function(){
+            video.play().catch(e => console.log("Autoplay diblokir browser, klik play manual."));
+        });
+
+        hls.on(Hls.Events.ERROR, function (event, data) {
+            if (data.fatal) {
+                console.log("Hls error berat, mencoba memutar secara native...");
+                video.src = url; 
             }
-        );
+        });
 
-    }else{
-
+    } else {
+        // Untuk browser Safari iOS / Mac yang mendukung m3u8 secara native tanpa hls.js
         video.src = url;
         video.play();
     }
