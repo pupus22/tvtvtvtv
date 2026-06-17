@@ -152,6 +152,7 @@ async function loadPlaylist(){
 
     document.getElementById("status").innerHTML = "Loading playlist...";
 
+    // Menggunakan RSS feed resmi Blogger agar bypass CORS 100% aman
     const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1";
 
     try{
@@ -166,19 +167,31 @@ async function loadPlaylist(){
 
         const htmlContent = data.feed.entry[0].content.$t; 
 
+        // Ekstraksi teks murni dari HTML artikel
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = htmlContent;
-        const plainTextPlaylist = tempDiv.textContent || tempDiv.innerText || "";
+        
+        // Mengganti tag break line menjadi baris baru nyata agar parser m3u bekerja sempurna
+        let formattedText = tempDiv.innerHTML
+            .replace(/<br\s*\/?>/gi, '\n')
+            .replace(/<\/p>/gi, '\n')
+            .replace(/<div[^>]*>/gi, '\n')
+            .replace(/<\/div>/gi, '\n');
+
+        const cleanDiv = document.createElement("div");
+        cleanDiv.innerHTML = formattedText;
+        const plainTextPlaylist = cleanDiv.textContent || cleanDiv.innerText || "";
 
         parsePlaylist(plainTextPlaylist);
 
-        document.getElementById("status").innerHTML =
-            allChannels.length + " channel ditemukan";
+        if(allChannels.length > 0) {
+            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan";
+        } else {
+            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa format penulisan M3U di Blogger.";
+        }
 
     }catch(err){
-
-        document.getElementById("status").innerHTML =
-            "Gagal membaca playlist dari Blogger.";
+        document.getElementById("status").innerHTML = "Gagal membaca playlist dari Blogger.";
         console.error(err);
     }
 }
@@ -186,28 +199,31 @@ async function loadPlaylist(){
 function parsePlaylist(text){
 
     allChannels = [];
-    const lines = text.split(/\r?\n/);
+    // Pisahkan baris secara fleksibel terhadap spasi / carriage return
+    const lines = text.split(/\n+/);
 
-    for(let i=0;i<lines.length;i++){
+    for(let i=0; i<lines.length; i++){
+        let currentLine = lines[i].trim();
 
-        if(lines[i].trim().startsWith("#EXTINF")){
-
-            let name = lines[i].split(",").pop().trim();
+        if(currentLine.includes("#EXTINF")){
+            let name = currentLine.split(",").pop().trim();
             let stream = "";
             
+            // Cari baris berisi URL http setelah info channel ditemukan
             for (let j = i + 1; j < lines.length; j++) {
-                if (lines[j].trim().startsWith("http")) {
-                    stream = lines[j].trim();
+                let nextLine = lines[j].trim();
+                if (nextLine.startsWith("http")) {
+                    stream = nextLine;
                     break;
-                } else if (lines[j].trim().startsWith("#EXTINF")) {
+                } else if (nextLine.includes("#EXTINF")) {
                     break;
                 }
             }
 
-            if(stream && stream.startsWith("http")){
+            if(stream){
                 allChannels.push({
-                    name:name,
-                    url:stream
+                    name: name,
+                    url: stream
                 });
             }
         }
@@ -253,15 +269,12 @@ function playChannel(url){
         window.hls.destroy();
     }
 
-    // Mengalirkan URL video melalui proxy corsproxy.io khusus untuk menangani segmen .m3u8 
     const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
 
     if(Hls.isSupported()){
 
-        // Mengonfigurasi hls.js agar meminta segmen video dengan benar lewat proxy
         const hls = new Hls({
             xhrSetup: function (xhr, url) {
-                // Jika hlsjs memanggil segmen internal berekstensi .ts, arahkan juga lewat proxy
                 if (!url.includes('corsproxy.io')) {
                     xhr.open('GET', 'https://corsproxy.io/?' + encodeURIComponent(url), true);
                 }
@@ -273,18 +286,16 @@ function playChannel(url){
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function(){
-            video.play().catch(e => console.log("Autoplay diblokir browser, klik play manual."));
+            video.play().catch(e => console.log("Autoplay ditahan browser. Click play manual."));
         });
 
         hls.on(Hls.Events.ERROR, function (event, data) {
             if (data.fatal) {
-                console.log("Hls error berat, mencoba memutar secara native...");
                 video.src = url; 
             }
         });
 
     } else {
-        // Untuk browser Safari iOS / Mac yang mendukung m3u8 secara native tanpa hls.js
         video.src = url;
         video.play();
     }
