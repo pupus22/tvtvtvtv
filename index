@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>IPTV Playlist Viewer</title>
+
+<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
+
+<style>
+body{
+    font-family:Arial,sans-serif;
+    background:#111;
+    color:white;
+    margin:0;
+}
+
+.header{
+    padding:15px;
+    background:#1a1a1a;
+    position:sticky;
+    top:0;
+}
+
+input{
+    width:100%;
+    padding:12px;
+    margin-bottom:10px;
+    border:none;
+    border-radius:8px;
+}
+
+button{
+    width:100%;
+    padding:12px;
+    background:#00aaff;
+    color:white;
+    border:none;
+    border-radius:8px;
+    cursor:pointer;
+}
+
+button:hover{
+    opacity:.9;
+}
+
+.container{
+    display:flex;
+    flex-wrap:wrap;
+}
+
+.left{
+    width:350px;
+    max-height:calc(100vh - 80px);
+    overflow:auto;
+    border-right:1px solid #333;
+}
+
+.right{
+    flex:1;
+    padding:10px;
+}
+
+.channel{
+    padding:12px;
+    border-bottom:1px solid #222;
+    cursor:pointer;
+}
+
+.channel:hover{
+    background:#222;
+}
+
+video{
+    width:100%;
+    max-height:80vh;
+    background:black;
+}
+
+.status{
+    margin-top:10px;
+    color:#aaa;
+}
+
+@media(max-width:768px){
+    .left{
+        width:100%;
+        max-height:300px;
+    }
+
+    .right{
+        width:100%;
+    }
+}
+</style>
+
+</head>
+<body>
+
+<div class="header">
+
+<input
+id="playlistUrl"
+value="https://bit.ly/pengembarahitam"
+placeholder="Paste URL Playlist">
+
+<button onclick="loadPlaylist()">
+Load Playlist
+</button>
+
+<input
+id="search"
+placeholder="Cari Channel..."
+onkeyup="filterChannels()">
+
+<div class="status" id="status"></div>
+
+</div>
+
+<div class="container">
+
+<div class="left">
+    <div id="channelList"></div>
+</div>
+
+<div class="right">
+
+<h3 id="currentChannel">
+Belum ada channel dipilih
+</h3>
+
+<video
+id="video"
+controls
+autoplay>
+</video>
+
+</div>
+
+</div>
+
+<script>
+
+let allChannels = [];
+
+async function loadPlaylist(){
+
+    const url =
+        document.getElementById("playlistUrl").value;
+
+    document.getElementById("status").innerHTML =
+        "Loading playlist...";
+
+    try{
+
+        const response =
+            await fetch(url);
+
+        const text =
+            await response.text();
+
+        parsePlaylist(text);
+
+        document.getElementById("status").innerHTML =
+            allChannels.length +
+            " channel ditemukan";
+
+    }catch(err){
+
+        document.getElementById("status").innerHTML =
+            "Gagal membaca playlist (kemungkinan CORS diblokir)";
+
+        console.error(err);
+    }
+}
+
+function parsePlaylist(text){
+
+    allChannels = [];
+
+    const lines = text.split(/\r?\n/);
+
+    for(let i=0;i<lines.length;i++){
+
+        if(lines[i].startsWith("#EXTINF")){
+
+            let name =
+                lines[i].split(",").pop().trim();
+
+            let stream =
+                lines[i+1]?.trim();
+
+            if(stream &&
+               stream.startsWith("http")){
+
+                allChannels.push({
+                    name:name,
+                    url:stream
+                });
+            }
+        }
+    }
+
+    renderChannels(allChannels);
+}
+
+function renderChannels(channels){
+
+    const container =
+        document.getElementById("channelList");
+
+    container.innerHTML = "";
+
+    channels.forEach(ch=>{
+
+        const div =
+            document.createElement("div");
+
+        div.className = "channel";
+
+        div.innerHTML = ch.name;
+
+        div.onclick = function(){
+
+            playChannel(ch.url);
+
+            document.getElementById(
+                "currentChannel"
+            ).innerHTML = ch.name;
+        };
+
+        container.appendChild(div);
+    });
+}
+
+function filterChannels(){
+
+    const keyword =
+        document.getElementById("search")
+        .value
+        .toLowerCase();
+
+    const result =
+        allChannels.filter(ch =>
+            ch.name
+            .toLowerCase()
+            .includes(keyword)
+        );
+
+    renderChannels(result);
+}
+
+function playChannel(url){
+
+    const video =
+        document.getElementById("video");
+
+    if(window.hls){
+
+        window.hls.destroy();
+    }
+
+    if(Hls.isSupported()){
+
+        const hls = new Hls();
+
+        window.hls = hls;
+
+        hls.loadSource(url);
+
+        hls.attachMedia(video);
+
+        hls.on(
+            Hls.Events.MANIFEST_PARSED,
+            function(){
+                video.play();
+            }
+        );
+
+    }else{
+
+        video.src = url;
+        video.play();
+    }
+}
+
+</script>
+
+</body>
+</html>
