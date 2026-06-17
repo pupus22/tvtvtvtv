@@ -84,7 +84,7 @@ video{
 
 .status{
     margin-top:10px;
-    color:#aaa;
+    color:#ffcc00;
 }
 
 @media(max-width:768px){
@@ -106,8 +106,8 @@ video{
 
 <input
 id="playlistUrl"
-value="https://bit.ly/pengembarahitam"
-placeholder="Paste URL Playlist">
+value="https://mahadewa666.blogspot.com/2025/04/playlist-iptv-by-zack.html"
+placeholder="Paste URL Artikel Blogspot Anda di sini">
 
 <button onclick="loadPlaylist()">
 Load Playlist
@@ -118,7 +118,7 @@ id="search"
 placeholder="Cari Channel..."
 onkeyup="filterChannels()">
 
-<div class="status" id="status"></div>
+<div class="status" id="status">Ready. Pasang URL Blogspot lalu klik Load.</div>
 
 </div>
 
@@ -148,28 +148,58 @@ autoplay>
 
 let allChannels = [];
 
-async function loadPlaylist(){
-    document.getElementById("status").innerHTML = "Loading full playlist via Scraper...";
+function loadPlaylist(){
+    document.getElementById("status").innerHTML = "Menghubungkan ke Google Server...";
     allChannels = [];
 
-    // Mengambil halaman web UTUH menggunakan AllOrigins untuk menghindari potongan teks dari feed Blogger
-    const targetUrl = "https://mahadewa666.blogspot.com/2025/04/playlist-iptv-by-zack.html";
-    const proxyUrl = `https://api.allorigins.win/get?url=${encodeURIComponent(targetUrl)}`;
+    const targetUrl = document.getElementById("playlistUrl").value.trim();
+    
+    if (!targetUrl.includes("blogspot.com")) {
+        document.getElementById("status").innerHTML = "Error: Harap masukkan URL artikel Blogspot yang valid.";
+        return;
+    }
 
     try {
-        const response = await fetch(proxyUrl);
-        if (!response.ok) throw new Error("Gagal menembus proxy.");
+        // Memecah URL Blogspot secara dinamis untuk mengambil domain dan path artikelnya
+        const urlObj = new URL(targetUrl);
+        const domain = urlObj.origin; 
+        const path = urlObj.pathname; 
+
+        // Bersihkan script lama jika ada
+        const oldScript = document.getElementById('bloggerJsonp');
+        if(oldScript) oldScript.remove();
+
+        // Memanggil single post feed secara spesifik via JSONP agar data murni ditarik 100% tanpa sensor/potongan
+        const nativeFeedUrl = `${domain}/feeds/posts/default?alt=json&path=${encodeURIComponent(path)}&callback=handleBloggerData`;
+
+        const script = document.createElement('script');
+        script.id = 'bloggerJsonp';
+        script.src = nativeFeedUrl;
+        script.onerror = function() {
+            document.getElementById("status").innerHTML = "Gagal memuat data. Pastikan URL artikel benar.";
+        };
         
-        const data = await response.json();
-        const htmlContent = data.contents; // Ini berisi seluruh kode HTML halaman web Anda tanpa sensor
+        document.body.appendChild(script);
 
-        // Menggunakan DOMParser untuk mengambil teks bersih dari area artikel (.post-body)
-        const parser = new DOMParser();
-        const doc = parser.parseFromString(htmlContent, 'text/html');
-        const postBody = doc.querySelector('.post-body') || doc.body;
+    } catch (e) {
+        document.getElementById("status").innerHTML = "URL tidak valid.";
+    }
+}
 
-        // Mengubah breakline HTML menjadi line break nyata (\n)
-        let formattedText = postBody.innerHTML
+function handleBloggerData(data) {
+    try {
+        if (!data.feed.entry || data.feed.entry.length === 0) {
+            throw new Error('Artikel tidak ditemukan atau tidak publik.');
+        }
+
+        // Mengambil konten penuh artikel
+        const htmlContent = data.feed.entry[0].content.$t; 
+
+        const tempDiv = document.createElement("div");
+        tempDiv.innerHTML = htmlContent;
+        
+        // Konversi paksa struktur HTML breakline Blogger menjadi baris teks baru (\n)
+        let textWithNewlines = tempDiv.innerHTML
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/p>/gi, '\n')
             .replace(/<div[^>]*>/gi, '\n')
@@ -178,20 +208,18 @@ async function loadPlaylist(){
             .replace(/\u00a0/g, ' ');
 
         const cleanDiv = document.createElement("div");
-        cleanDiv.innerHTML = formattedText;
-        const fullPlainText = cleanDiv.textContent || cleanDiv.innerText || "";
+        cleanDiv.innerHTML = textWithNewlines;
+        const plainTextPlaylist = cleanDiv.textContent || cleanDiv.innerText || "";
 
-        // Pindai teks murni menggunakan Regex Global agar menangkap semua channel dari atas sampai bawah
-        parsePlaylistStrict(fullPlainText);
+        parsePlaylistStrict(plainTextPlaylist);
 
         if(allChannels.length > 0) {
-            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan (FIFA & RTB siap diputar).";
+            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan! (FIFA, RTB, dll ready di list).";
         } else {
-            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa tulisan M3U di postingan blog.";
+            document.getElementById("status").innerHTML = "Daftar teks terbaca, tetapi format #EXTINF tidak ditemukan.";
         }
-
     } catch(err) {
-        document.getElementById("status").innerHTML = "Gagal memuat halaman blog.";
+        document.getElementById("status").innerHTML = "Gagal memproses struktur artikel.";
         console.error(err);
     }
 }
@@ -203,19 +231,17 @@ function parsePlaylistStrict(text) {
     for(let i=0; i<lines.length; i++){
         let currentLine = lines[i].trim();
 
-        // Cari tag info channel
         if(currentLine.toUpperCase().includes("#EXTINF")){
             currentName = currentLine.split(",").pop().trim();
             continue;
         }
 
-        // Cari link streaming di bawahnya (mendukung http/https dan case-insensitive)
         if(/^https?:\/\//i.test(currentLine) && currentName !== ""){
             allChannels.push({
                 name: currentName,
                 url: currentLine
             });
-            currentName = ""; // Reset pasangan
+            currentName = ""; 
         }
     }
 
@@ -262,7 +288,9 @@ function playChannel(url){
         hls.attachMedia(video);
 
         hls.on(Hls.Events.MANIFEST_PARSED, function(){
-            video.play().catch(e => console.log("Autoplay blocked."));
+            video.play().catch(e => {
+                document.getElementById("status").innerHTML = "Sistem siap. Jika video stuck/CORS, gunakan ekstensi CORS Unblock browser.";
+            });
         });
 
         hls.on(Hls.Events.ERROR, function (event, data) {
