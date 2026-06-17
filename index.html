@@ -3,186 +3,54 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-
-<title>IPTV Playlist Viewer</title>
-
-<script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
-
+<title>IPTV Playlist Downloader</title>
 <style>
-body{
-    font-family:Arial,sans-serif;
-    background:#111;
-    color:white;
-    margin:0;
-}
-
-.header{
-    padding:15px;
-    background:#1a1a1a;
-    position:sticky;
-    top:0;
-    z-index: 10;
-}
-
-input{
-    width:100%;
-    padding:12px;
-    margin-bottom:10px;
-    border:none;
-    border-radius:8px;
-    box-sizing: border-box;
-}
-
-button{
-    width:100%;
-    padding:12px;
-    background:#00aaff;
-    color:white;
-    border:none;
-    border-radius:8px;
-    cursor:pointer;
-    box-sizing: border-box;
-    font-weight: bold;
-}
-
-button:hover{
-    opacity:.9;
-}
-
-.container{
-    display:flex;
-    flex-wrap:wrap;
-}
-
-.left{
-    width:350px;
-    max-height:calc(100vh - 180px);
-    overflow:auto;
-    border-right:1px solid #333;
-}
-
-.right{
-    flex:1;
-    padding:10px;
-}
-
-.channel{
-    padding:12px;
-    border-bottom:1px solid #222;
-    cursor:pointer;
-}
-
-.channel:hover{
-    background:#222;
-}
-
-video{
-    width:100%;
-    max-height:80vh;
-    background:black;
-}
-
-.status{
-    margin-top:10px;
-    color:#aaa;
-}
-
-@media(max-width:768px){
-    .left{
-        width:100%;
-        max-height:300px;
-    }
-
-    .right{
-        width:100%;
-    }
-}
+    body { font-family: Arial, sans-serif; background: #111; color: white; text-align: center; padding: 50px 20px; }
+    .card { max-width: 500px; margin: 0 auto; background: #1a1a1a; padding: 30px; border-radius: 12px; box-shadow: 0 4px 15px rgba(0,0,0,0.5); }
+    button { width: 100%; padding: 14px; background: #00aaff; color: white; border: none; border-radius: 8px; cursor: pointer; font-weight: bold; font-size: 16px; margin-top: 15px; }
+    button:hover { opacity: .9; }
+    .status { margin-top: 15px; color: #aaa; font-size: 14px; }
 </style>
-
 </head>
 <body>
 
-<div class="header">
-
-<input
-id="playlistUrl"
-value="https://bit.ly/pengembarahitam"
-placeholder="Paste URL Playlist">
-
-<button onclick="loadPlaylist()">
-Load Playlist
-</button>
-
-<input
-id="search"
-placeholder="Cari Channel..."
-onkeyup="filterChannels()">
-
-<div class="status" id="status"></div>
-
-</div>
-
-<div class="container">
-
-<div class="left">
-    <div id="channelList"></div>
-</div>
-
-<div class="right">
-
-<h3 id="currentChannel">
-Belum ada channel dipilih
-</h3>
-
-<video
-id="video"
-controls
-autoplay>
-</video>
-
-</div>
-
+<div class="card">
+    <h2>IPTV M3U Converter</h2>
+    <p>Ambil playlist dari Blogspot dan simpan sebagai file lokal untuk VLC / Android Player.</p>
+    
+    <button onclick="downloadM3U()">Generate & Download .M3U</button>
+    <div class="status" id="status">Ready</div>
 </div>
 
 <script>
+function downloadM3U() {
+    document.getElementById("status").innerHTML = "Menghubungi Blogger...";
 
-let allChannels = [];
-
-function loadPlaylist(){
-    document.getElementById("status").innerHTML = "Loading playlist via JSONP...";
-
-    // Hapus script JSONP yang lama jika ada
     const oldScript = document.getElementById('bloggerJsonp');
     if(oldScript) oldScript.remove();
 
-    // Menggunakan parameter &callback=handleBloggerData untuk bypass CORS secara native
-    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1&callback=handleBloggerData";
+    // Bypass CORS menggunakan JSONP
+    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1&callback=processData";
 
-    // Injeksi tag script ke dalam dokumen HTML
     const script = document.createElement('script');
     script.id = 'bloggerJsonp';
     script.src = blogFeedUrl;
     script.onerror = function() {
-        document.getElementById("status").innerHTML = "Gagal memuat data dari Blogger.";
+        document.getElementById("status").innerHTML = "Gagal memuat data blog.";
     };
-    
     document.body.appendChild(script);
 }
 
-// Fungsi callback yang otomatis dijalankan saat data dari Blogger diterima
-function handleBloggerData(data) {
+function processData(data) {
     try {
         if (!data.feed.entry || data.feed.entry.length === 0) {
-            throw new Error('Tidak ada artikel ditemukan.');
+            throw new Error('Artikel tidak ditemukan.');
         }
 
         const htmlContent = data.feed.entry[0].content.$t; 
-
-        // Ekstraksi teks murni dari HTML artikel
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = htmlContent;
         
-        // Konversi pemisah baris HTML menjadi baris baru murni (\n)
         let formattedText = tempDiv.innerHTML
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/p>/gi, '\n')
@@ -191,115 +59,55 @@ function handleBloggerData(data) {
 
         const cleanDiv = document.createElement("div");
         cleanDiv.innerHTML = formattedText;
-        const plainTextPlaylist = cleanDiv.textContent || cleanDiv.innerText || "";
+        const plainText = cleanDiv.textContent || cleanDiv.innerText || "";
 
-        parsePlaylist(plainTextPlaylist);
+        // Bersihkan dan susun format M3U8 murni
+        const lines = plainText.split(/\n+/);
+        let m3uOutput = "#EXTM3U\n";
+        let count = 0;
 
-        if(allChannels.length > 0) {
-            document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan";
+        for (let i = 0; i < lines.length; i++) {
+            let currentLine = lines[i].trim();
+            if (currentLine.includes("#EXTINF")) {
+                let name = currentLine.split(",").pop().trim();
+                let stream = "";
+                
+                for (let j = i + 1; j < lines.length; j++) {
+                    let nextLine = lines[j].trim();
+                    if (nextLine.startsWith("http")) {
+                        stream = nextLine;
+                        break;
+                    } else if (nextLine.includes("#EXTINF")) {
+                        break;
+                    }
+                }
+
+                if (stream) {
+                    m3uOutput += `#EXTINF:-1,${name}\n${stream}\n`;
+                    count++;
+                }
+            }
+        }
+
+        if (count > 0) {
+            // Membuat trigger download file .m3u otomatis ke komputer/HP
+            const blob = new Blob([m3uOutput], { type: 'text/plain' });
+            const fileUrl = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+            link.href = fileUrl;
+            link.download = 'playlist_zack.m3u';
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+
+            document.getElementById("status").innerHTML = `Berhasil mengunduh ${count} channel!`;
         } else {
-            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa format tulisan M3U di Blogger.";
+            document.getElementById("status").innerHTML = "Format playlist di dalam artikel tidak valid.";
         }
+
     } catch(err) {
-        document.getElementById("status").innerHTML = "Gagal memproses data dari Blogger.";
+        document.getElementById("status").innerHTML = "Gagal memproses file.";
         console.error(err);
-    }
-}
-
-function parsePlaylist(text){
-    allChannels = [];
-    const lines = text.split(/\n+/);
-
-    for(let i=0; i<lines.length; i++){
-        let currentLine = lines[i].trim();
-
-        if(currentLine.includes("#EXTINF")){
-            let name = currentLine.split(",").pop().trim();
-            let stream = "";
-            
-            for (let j = i + 1; j < lines.length; j++) {
-                let nextLine = lines[j].trim();
-                if (nextLine.startsWith("http")) {
-                    stream = nextLine;
-                    break;
-                } else if (nextLine.includes("#EXTINF")) {
-                    break;
-                }
-            }
-
-            if(stream){
-                allChannels.push({
-                    name: name,
-                    url: stream
-                });
-            }
-        }
-    }
-
-    renderChannels(allChannels);
-}
-
-function renderChannels(channels){
-    const container = document.getElementById("channelList");
-    container.innerHTML = "";
-
-    channels.forEach(ch=>{
-        const div = document.createElement("div");
-        div.className = "channel";
-        div.innerHTML = ch.name;
-
-        div.onclick = function(){
-            playChannel(ch.url);
-            document.getElementById("currentChannel").innerHTML = ch.name;
-        };
-
-        container.appendChild(div);
-    });
-}
-
-function filterChannels(){
-    const keyword = document.getElementById("search").value.toLowerCase();
-    const result = allChannels.filter(ch =>
-        ch.name.toLowerCase().includes(keyword)
-    );
-    renderChannels(result);
-}
-
-function playChannel(url){
-    const video = document.getElementById("video");
-
-    if(window.hls){
-        window.hls.destroy();
-    }
-
-    // Mengalirkan URL video melalui proxy corsproxy.io khusus menangani segmen .m3u8
-    const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
-
-    if(Hls.isSupported()){
-        const hls = new Hls({
-            xhrSetup: function (xhr, url) {
-                if (!url.includes('corsproxy.io')) {
-                    xhr.open('GET', 'https://corsproxy.io/?' + encodeURIComponent(url), true);
-                }
-            }
-        });
-
-        window.hls = hls;
-        hls.loadSource(finalUrl);
-        hls.attachMedia(video);
-
-        hls.on(Hls.Events.MANIFEST_PARSED, function(){
-            video.play().catch(e => console.log("Autoplay ditahan browser. Click play manual."));
-        });
-
-        hls.on(Hls.Events.ERROR, function (event, data) {
-            if (data.fatal) {
-                video.src = url; 
-            }
-        });
-    } else {
-        video.src = url;
-        video.play();
     }
 }
 </script>
