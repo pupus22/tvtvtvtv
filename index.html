@@ -148,19 +148,30 @@ autoplay>
 
 let allChannels = [];
 
-async function loadPlaylist(){
+function loadPlaylist(){
+    document.getElementById("status").innerHTML = "Loading playlist via JSONP...";
 
-    document.getElementById("status").innerHTML = "Loading playlist...";
+    // Hapus script JSONP yang lama jika ada
+    const oldScript = document.getElementById('bloggerJsonp');
+    if(oldScript) oldScript.remove();
 
-    // Menggunakan RSS feed resmi Blogger agar bypass CORS 100% aman
-    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1";
+    // Menggunakan parameter &callback=handleBloggerData untuk bypass CORS secara native
+    const blogFeedUrl = "https://mahadewa666.blogspot.com/feeds/posts/default?alt=json&max-results=1&callback=handleBloggerData";
 
-    try{
+    // Injeksi tag script ke dalam dokumen HTML
+    const script = document.createElement('script');
+    script.id = 'bloggerJsonp';
+    script.src = blogFeedUrl;
+    script.onerror = function() {
+        document.getElementById("status").innerHTML = "Gagal memuat data dari Blogger.";
+    };
+    
+    document.body.appendChild(script);
+}
 
-        const response = await fetch(blogFeedUrl);
-        if (!response.ok) throw new Error('Gagal memuat feed dari Blogger.');
-
-        const data = await response.json();
+// Fungsi callback yang otomatis dijalankan saat data dari Blogger diterima
+function handleBloggerData(data) {
+    try {
         if (!data.feed.entry || data.feed.entry.length === 0) {
             throw new Error('Tidak ada artikel ditemukan.');
         }
@@ -171,7 +182,7 @@ async function loadPlaylist(){
         const tempDiv = document.createElement("div");
         tempDiv.innerHTML = htmlContent;
         
-        // Mengganti tag break line menjadi baris baru nyata agar parser m3u bekerja sempurna
+        // Konversi pemisah baris HTML menjadi baris baru murni (\n)
         let formattedText = tempDiv.innerHTML
             .replace(/<br\s*\/?>/gi, '\n')
             .replace(/<\/p>/gi, '\n')
@@ -187,19 +198,16 @@ async function loadPlaylist(){
         if(allChannels.length > 0) {
             document.getElementById("status").innerHTML = allChannels.length + " channel ditemukan";
         } else {
-            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa format penulisan M3U di Blogger.";
+            document.getElementById("status").innerHTML = "0 channel ditemukan. Periksa format tulisan M3U di Blogger.";
         }
-
-    }catch(err){
-        document.getElementById("status").innerHTML = "Gagal membaca playlist dari Blogger.";
+    } catch(err) {
+        document.getElementById("status").innerHTML = "Gagal memproses data dari Blogger.";
         console.error(err);
     }
 }
 
 function parsePlaylist(text){
-
     allChannels = [];
-    // Pisahkan baris secara fleksibel terhadap spasi / carriage return
     const lines = text.split(/\n+/);
 
     for(let i=0; i<lines.length; i++){
@@ -209,7 +217,6 @@ function parsePlaylist(text){
             let name = currentLine.split(",").pop().trim();
             let stream = "";
             
-            // Cari baris berisi URL http setelah info channel ditemukan
             for (let j = i + 1; j < lines.length; j++) {
                 let nextLine = lines[j].trim();
                 if (nextLine.startsWith("http")) {
@@ -233,12 +240,10 @@ function parsePlaylist(text){
 }
 
 function renderChannels(channels){
-
     const container = document.getElementById("channelList");
     container.innerHTML = "";
 
     channels.forEach(ch=>{
-
         const div = document.createElement("div");
         div.className = "channel";
         div.innerHTML = ch.name;
@@ -253,7 +258,6 @@ function renderChannels(channels){
 }
 
 function filterChannels(){
-
     const keyword = document.getElementById("search").value.toLowerCase();
     const result = allChannels.filter(ch =>
         ch.name.toLowerCase().includes(keyword)
@@ -262,17 +266,16 @@ function filterChannels(){
 }
 
 function playChannel(url){
-
     const video = document.getElementById("video");
 
     if(window.hls){
         window.hls.destroy();
     }
 
+    // Mengalirkan URL video melalui proxy corsproxy.io khusus menangani segmen .m3u8
     const finalUrl = 'https://corsproxy.io/?' + encodeURIComponent(url);
 
     if(Hls.isSupported()){
-
         const hls = new Hls({
             xhrSetup: function (xhr, url) {
                 if (!url.includes('corsproxy.io')) {
@@ -294,13 +297,11 @@ function playChannel(url){
                 video.src = url; 
             }
         });
-
     } else {
         video.src = url;
         video.play();
     }
 }
-
 </script>
 
 </body>
